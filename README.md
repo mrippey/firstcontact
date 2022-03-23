@@ -1,4 +1,4 @@
-#FirstContact
+# FirstContact
 
 Complete the first steps of triaging a malicious file, including gathering hashes and finding interesting strings.
 
