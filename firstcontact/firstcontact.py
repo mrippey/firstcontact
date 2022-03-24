@@ -1,51 +1,79 @@
 import argparse
 import hashlib
-from pathlib import Path
+from intezer_sdk import api
+from intezer_sdk.analysis import Analysis
+from pathlib import Path 
+from pprint import pprint
 import subprocess 
 import sys 
-import os 
-import time
+from time import sleep
 
 AUTHOR = 'Michael Rippey, Twitter: @nahamike01'
-LAST_SEEN = '2022 01 16'
+LAST_SEEN = '2022 03 24'
 DESCRIPTION = """Given a folder of suspicious files, conduct basic analysis consistsing of hashing and strings.
 
-usage: python3 first_contact.py -p <<path to sus files>>"""
+usage: python3 first_contact.py  <<path to sus files>>"""
 
 
-
-def check_folder_status(pt):
-    if pt.is_dir() and any(Path(pt).iterdir()) == True:
+def check_folder_status(sample_dir):
+    '''
+    Check if given path to samples is a directory and not empty,
+    else exits.
+    '''
+    if sample_dir.is_dir() and any(Path(sample_dir).iterdir()) == True:
         print(f'[*] Folder is ready for triage!\n')
     else:
-        print(f'[!] Didnt recognize the path: {pt}. Exiting...')
+        print(f'[!] Didnt recognize the path: {sample_dir}. Exiting...')
         sys.exit(1)
 
-    print('[+] Printing suspect files and their SHA256 hash separated by "::" :\n')
-    for malFiles in pt.iterdir():
-        if malFiles.is_file():
-            sha256_hash = hashlib.sha256(malFiles.name.encode()).hexdigest()
-            print(f'{malFiles.name}::{sha256_hash}\n')
+
+def hash_files(sample_dir):
+    '''
+    Create MD5 hash of samples
+    '''
+    
+    print('[+] Printing suspect files and their SHA256 hash separated by " >> " :\n')
+    for samples in sample_dir.iterdir():
+        if samples.is_file():
+            md5_hash = hashlib.md5(samples.name.encode()).hexdigest()
+            print(f'{samples.name} >> {md5_hash}\n')
             print()
+            
 
+def run_strings(sample_dir):
+    '''
+    Run Strings command against each sample, and write output to similarly named txt file
+    ''' 
+    
+    print("[+] Running 'Strings' command against each file. This may take a while...\n")
+    sleep(5)
 
-def run_strings(pt):
-    print('[+] Running each file against strings. This may take a while...\n')
     hashed_samples = []
-    for samples in pt.iterdir():
-        paths = Path.cwd() / f'{samples}_strings.txt'
+      
+    for samples in sample_dir.iterdir():
+        strings_out_pth = Path.cwd() / f'{samples}_strings.txt'
         hashed_samples.append(samples)
-        tester = str(hashed_samples)
-        test = tester.replace('PosixPath(','').replace('(','').replace(')','').replace('[','').replace(']','')
-  
-        subprocess.call(f'strings -n5 {test}',  shell=True, stdout=open(paths, 'w'), stderr=subprocess.DEVNULL)
-        time.sleep(1)
-    print(f'[*] Files written to: {paths}')
+        string_sample = str(hashed_samples)
+        samples_no_prefix = string_sample.replace('PosixPath(','').replace('(','').replace(')','').replace('[','').replace(']','')
 
+        subprocess.call(f"strings  {samples_no_prefix}", shell=True, stdout=open(strings_out_pth, 'w'), stderr=subprocess.DEVNULL)
+       
+        
+        print(f'{strings_out_pth} written to {sample_dir}')
+       
 
-#TODO: Send to Cuckoo Sandbox instance for further analysis || commercial sandbox
-def send_to_cuckoo(pt):
-    pass
+def intezer_file_analysis(sample_dir):
+    '''
+    Utilize Intezer SDK to analyze a file
+    TODO: analyze multiple files at a time if allowed by API permissions.
+    '''
+    
+    api.set_global_api('YOURAPIKEY')
+    analyze_file = Analysis(file_path=sample_dir)
+    analyze_file.send(wait=True)
+    result = analyze_file.result()
+    pprint(result)
+
 
 
 def banner():
@@ -66,23 +94,29 @@ def main():
     parser.add_argument('-p',
                         '--path',
                         type=Path,
-                        help='The path to your suspect files')
-    parser.add_argument('-c',
-                        '--cs',
-                        help='send files to sandbox')
+                        help='Path to sample files to be investigated.')
+    parser.add_argument('-i',
+                        '--intzr',
+                        
+                        help='Analyze a single file with Intezer'\s API')
 
     args = parser.parse_args()
 
-    if args.path is None:
+    if args.path:
+        print(banner())
+        check_folder_status(args.path)
+        hash_files(args.path)
+        run_strings(args.path)
+
+    elif args.intzr:
+        print(banner())
+        print(intezer_file_analysis(args.intzr))
+
+    else:
         print(banner())
         parser.print_help()
         print()
-        print('[!] No folder specified. Exiting...')
-    
-    elif args.path:
-        print(banner())
-        check_folder_status(args.path)
-        run_strings(args.path)
+        sys.exit('[!] No argument provided')
 
      
 
